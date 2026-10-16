@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# local env files (secrets never committed; see .env.example)
+.env
+.env.*
+!.env.example
+
+# personal interview notes, local only
+INTERVIEW_PREP.md
+
+npm-debug.log*
+.DS_Store
