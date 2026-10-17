@@ -1,0 +1,210 @@
+// Data model for Newtonite Ops.
+// Extra SQL that Prisma cannot express (pg_trgm extension, partial index,
+// append-only trigger) lives in the migration files, see prisma/migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  VIEWER
+  MEMBER
+  LEAD
+  ADMIN
+}
+
+enum ItemType {
+  INCIDENT
+  CUSTOMER_ISSUE
+  PAYMENT
+  COMPLIANCE
+  TASK
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ItemStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  RESOLVED
+  CLOSED
+}
+
+enum ActivityType {
+  CREATED
+  STATE_CHANGED
+  ASSIGNEE_CHANGED
+  PRIORITY_CHANGED
+  COMMENT_ADDED
+  EDITED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum JobType {
+  NOTIFY_ASSIGNEE
+  NOTIFY_APPROVERS
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  memberships   Membership[]
+  assignedItems WorkItem[]      @relation("AssignedItems")
+  createdItems  WorkItem[]      @relation("CreatedItems")
+  activity      ActivityEvent[]
+  comments      Comment[]
+  notifications Notification[]
+}
+
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  items       WorkItem[]
+}
+
+// A user's role is per team: the same person can be LEAD in one team and MEMBER in another.
+model Membership {
+  userId String @db.Uuid
+  teamId String @db.Uuid
+  role   Role
+
+  user User @relation(fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@id([userId, teamId])
+  @@index([teamId, role])
+}
+
+model WorkItem {
+  id          String     @id @default(uuid()) @db.Uuid
+  title       String
+  description String     @default("")
+  type        ItemType
+  priority    Priority
+  status      ItemStatus @default(OPEN)
+  teamId      String     @db.Uuid
+  assigneeId  String?    @db.Uuid
+  createdById String     @db.Uuid
+  dueDate     DateTime?  @db.Date
+  // Optimistic-locking counter: every write does "WHERE version = <what the client saw>" and increments it.
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  team      Team            @relation(fields: [teamId], references: [id])
+  assignee  User?           @relation("AssignedItems", fields: [assigneeId], references: [id])
+  createdBy User            @relation("CreatedItems", fields: [createdById], references: [id])
+  activity  ActivityEvent[]
+  comments  Comment[]
+
+  // Team list / dashboard, newest first (matches the keyset ORDER BY createdAt DESC, id DESC)
+  @@index([teamId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([teamId, status, createdAt(sort: Desc), id(sort: Desc)])
+  // "Assigned to me"
+  @@index([assigneeId, status, createdAt(sort: Desc), id(sort: Desc)])
+  // Substring search (ILIKE '%q%') via trigram GIN indexes
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+// Append-only history. A DB trigger rejects UPDATE and DELETE on this table.
+model ActivityEvent {
+  id        String       @id @default(uuid()) @db.Uuid
+  itemId    String       @db.Uuid
+  actorId   String       @db.Uuid
+  type      ActivityType
+  from      Json?
+  to        Json?
+  createdAt DateTime     @default(now())
+
+  item  WorkItem @relation(fields: [itemId], references: [id])
+  actor User     @relation(fields: [actorId], references: [id])
+
+  @@index([itemId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model Comment {
+  id        String   @id @default(uuid()) @db.Uuid
+  itemId    String   @db.Uuid
+  authorId  String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  item   WorkItem @relation(fields: [itemId], references: [id])
+  author User     @relation(fields: [authorId], references: [id])
+
+  @@index([itemId, createdAt])
+}
+
+// One row per (user, Idempotency-Key). The unique constraint is what makes duplicates safe,
+// including two identical requests arriving at the same moment.
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  key            String
+  route          String
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, key])
+}
+
+// Transactional outbox: written in the same transaction as the business change,
+// picked up later by the worker (src/worker).
+model OutboxJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        JobType
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  nextRunAt   DateTime  @default(now())
+  lockedAt    DateTime?
+  lastError   String?
+  dedupeKey   String    @unique
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status, nextRunAt])
+}
+
+// Side effect produced by the worker. The unique dedupeKey makes job handlers idempotent:
+// running the same job twice still yields one notification.
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  itemId    String   @db.Uuid
+  message   String
+  dedupeKey String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+}
