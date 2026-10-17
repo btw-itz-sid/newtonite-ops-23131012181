@@ -1,0 +1,48 @@
+# `docker compose up` starts Postgres, runs migrations + seed, then starts the app and the worker.
+# The default secrets below are for local demo use only; override them via environment or .env.
+x-app-env: &app-env
+  DATABASE_URL: postgresql://postgres:postgres@db:5432/newtonite
+  TEST_DATABASE_URL: postgresql://postgres:postgres@db:5432/newtonite_test
+  JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me-0123456789}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: newtonite
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d newtonite"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build: .
+    image: newtonite-ops
+    environment: *app-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    image: newtonite-ops
+    environment: *app-env
+    # migrate deploy takes an advisory lock, so app and worker can both run it safely
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
