@@ -1,0 +1,3 @@
+# Keep LF line endings everywhere so files are identical on Windows, macOS, Linux and in Docker
+# (Prisma checksums migration files, so their bytes must not change between machines).
+* text=auto eol=lf
