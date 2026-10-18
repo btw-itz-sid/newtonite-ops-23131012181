@@ -63,7 +63,10 @@ export function permissionsFor(user: AuthUser, item: Item) {
     canClaim: can(user, "item:claim", item) && !item.assigneeId && CLAIMABLE_STATUSES.includes(item.status),
     canAssign: open && can(user, "item:assign", item),
     canChangePriority: open && can(user, "item:change_priority", item),
-    transitions: TRANSITIONS[item.status].filter((t) => can(user, t.action, item)).map((t) => t.to),
+    transitions: TRANSITIONS[item.status]
+      .filter((t) => can(user, t.action, item))
+      .filter((t) => t.to !== "IN_PROGRESS" || item.assigneeId !== null) // see ASSIGNEE_REQUIRED below
+      .map((t) => t.to),
   };
 }
 
