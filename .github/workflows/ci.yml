@@ -1,0 +1,51 @@
+# Proves the README works on a clean machine: fresh checkout -> `docker compose up` -> seed -> tests.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  docker-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker compose up
+        run: docker compose up -d --build
+
+      - name: Wait for the app (migrations + seed run on startup)
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:3000/login > /dev/null; then echo "app is up"; exit 0; fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Log in as a seeded user and list items
+        run: |
+          TOKEN=$(curl -sf -X POST http://localhost:3000/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"lead@newtonite.dev","password":"password123"}' | jq -r .token)
+          curl -sf "http://localhost:3000/api/items?limit=5" -H "Authorization: Bearer $TOKEN" | jq -e '.items | length == 5'
+
+      - name: npm test (inside the app container, against the compose Postgres)
+        run: docker compose exec -T app npm test
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
