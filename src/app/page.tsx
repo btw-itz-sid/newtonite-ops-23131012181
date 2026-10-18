@@ -5,7 +5,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { api, errorText, toQuery, type Item, type ItemDetail, type Me, type Notification, type Page } from "@/client/api";
-import { ErrorBanner, Header, ItemTable, useMe } from "@/client/ui";
+import { Badge, ErrorBanner, Header, ItemTable, useMe } from "@/client/ui";
 import { ITEM_TYPES, PRIORITIES, STATUSES, type ItemType, type Priority } from "@/shared/constants";
 
 export default function DashboardPage() {
@@ -33,16 +33,14 @@ function ViewSection({ title, view }: { title: string; view: string }) {
     queryFn: () => api<Page<Item>>(`/api/items?${toQuery({ view, limit: "5" })}`),
   });
   return (
-    <section>
+    <section className="card">
       <h3>{title}</h3>
       <ErrorBanner text={query.error ? errorText(query.error) : null} />
       <ul>
         {query.data?.items.map((item) => (
           <li key={item.id}>
-            <Link href={`/items/${item.id}`}>{item.title}</Link>{" "}
-            <span className="muted">
-              {item.priority} / {item.status}
-            </span>
+            <Link href={`/items/${item.id}`}>{item.title}</Link> <Badge value={item.priority} />{" "}
+            <Badge value={item.status} />
           </li>
         ))}
       </ul>
@@ -58,7 +56,7 @@ function Notifications() {
   });
   if (!query.data?.length) return null;
   return (
-    <section>
+    <section className="card">
       <h3>Notifications</h3>
       <ul>
         {query.data.slice(0, 5).map((n) => (
@@ -99,7 +97,7 @@ function CreateItemForm({ me }: { me: Me }) {
 
   if (teams.length === 0) return null; // VIEWERs and users without a team can't create items
   return (
-    <section>
+    <section className="card">
       <h3>New item</h3>
       <form
         className="row"
@@ -150,7 +148,7 @@ function ItemList({ me }: { me: Me }) {
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <section>
+    <section className="card">
       <h3>All items</h3>
       <div className="row">
         <form

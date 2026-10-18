@@ -12,7 +12,7 @@ import {
   type Page,
   type TeamMember,
 } from "@/client/api";
-import { ErrorBanner, Header, useMe } from "@/client/ui";
+import { Badge, ErrorBanner, Header, useMe } from "@/client/ui";
 import { PRIORITIES, type ItemStatus, type Priority } from "@/shared/constants";
 
 /**
@@ -132,79 +132,85 @@ export default function ItemPage() {
       <Header me={me.data} />
       <ErrorBanner text={error?.text ?? null} onReload={error?.conflict ? reload : undefined} />
 
-      <h2>{item.title}</h2>
-      <p className="muted">
-        {item.team.name} / {item.type} / created by {item.createdBy.name} on{" "}
-        {new Date(item.createdAt).toLocaleString()} / version {item.version}
-        {item.dueDate && <> / due {item.dueDate.slice(0, 10)}</>}
-      </p>
-      <p style={{ whiteSpace: "pre-wrap" }}>{item.description || <span className="muted">No description</span>}</p>
+      <div className="card">
+        <h2>{item.title}</h2>
+        <p className="muted">
+          {item.team.name} / {item.type} / created by {item.createdBy.name} on{" "}
+          {new Date(item.createdAt).toLocaleString()} / version {item.version}
+          {item.dueDate && <> / due {item.dueDate.slice(0, 10)}</>}
+        </p>
+        <p style={{ whiteSpace: "pre-wrap" }}>{item.description || <span className="muted">No description</span>}</p>
 
-      <div className="row">
-        <strong>Status:</strong> {item.status}
-        {can.transitions.map((to) => (
-          <button
-            key={to}
-            disabled={busy}
-            onClick={() => run(() => transition.mutate({ to, version: item.version }))}
-          >
-            Move to {to}
-          </button>
-        ))}
-      </div>
+        <div className="row">
+          <strong>Status:</strong> <Badge value={item.status} />
+          {can.transitions.map((to) => (
+            <button
+              key={to}
+              disabled={busy}
+              onClick={() => run(() => transition.mutate({ to, version: item.version }))}
+            >
+              Move to {to}
+            </button>
+          ))}
+        </div>
 
-      <div className="row">
-        <strong>Assignee:</strong> {item.assignee?.name ?? <span className="muted">unassigned</span>}
-        {can.canClaim && (
-          <button disabled={busy} onClick={() => run(() => claim.mutate({ version: item.version }))}>
-            Claim
-          </button>
-        )}
-        {can.canAssign && members.data && (
-          <select
-            value={item.assigneeId ?? ""}
-            disabled={busy}
-            onChange={(e) => run(() => update.mutate({ version: item.version, assigneeId: e.target.value || null }))}
-          >
-            <option value="">Unassigned</option>
-            {members.data
-              .filter((m) => m.role !== "VIEWER")
-              .map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.role})
-                </option>
+        <div className="row">
+          <strong>Assignee:</strong> {item.assignee?.name ?? <span className="muted">unassigned</span>}
+          {can.canClaim && (
+            <button disabled={busy} onClick={() => run(() => claim.mutate({ version: item.version }))}>
+              Claim
+            </button>
+          )}
+          {can.canAssign && members.data && (
+            <select
+              value={item.assigneeId ?? ""}
+              disabled={busy}
+              onChange={(e) => run(() => update.mutate({ version: item.version, assigneeId: e.target.value || null }))}
+            >
+              <option value="">Unassigned</option>
+              {members.data
+                .filter((m) => m.role !== "VIEWER")
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.role})
+                  </option>
+                ))}
+            </select>
+          )}
+        </div>
+
+        <div className="row">
+          <strong>Priority:</strong>
+          {can.canChangePriority ? (
+            <select
+              value={item.priority}
+              disabled={busy}
+              onChange={(e) => run(() => update.mutate({ version: item.version, priority: e.target.value as Priority }))}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p}>{p}</option>
               ))}
-          </select>
+            </select>
+          ) : (
+            <Badge value={item.priority} />
+          )}
+        </div>
+
+        {can.canEdit && (
+          <EditForm
+            key={item.version}
+            item={item}
+            busy={busy}
+            onSave={(title, description) => run(() => update.mutate({ version: item.version, title, description }))}
+          />
         )}
       </div>
 
-      <div className="row">
-        <strong>Priority:</strong>
-        {can.canChangePriority ? (
-          <select
-            value={item.priority}
-            disabled={busy}
-            onChange={(e) => run(() => update.mutate({ version: item.version, priority: e.target.value as Priority }))}
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
-        ) : (
-          item.priority
-        )}
-      </div>
-
-      {can.canEdit && (
-        <EditForm
-          key={item.version}
-          item={item}
-          busy={busy}
-          onSave={(title, description) => run(() => update.mutate({ version: item.version, title, description }))}
-        />
+      {can.canComment && (
+        <div className="card">
+          <CommentForm itemId={id} onError={showError} />
+        </div>
       )}
-
-      {can.canComment && <CommentForm itemId={id} onError={showError} />}
       <Timeline itemId={id} />
     </main>
   );
@@ -297,7 +303,7 @@ function Timeline({ itemId }: { itemId: string }) {
   });
   const events = activity.data?.pages.flatMap((p) => p.items) ?? [];
   return (
-    <section>
+    <section className="card">
       <h3>Activity</h3>
       <ErrorBanner text={activity.error ? errorText(activity.error) : null} />
       <ul className="timeline">

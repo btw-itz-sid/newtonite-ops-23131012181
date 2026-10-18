@@ -24,7 +24,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 360, margin: "80px auto" }}>
+    <main className="card login">
       <h1>Newtonite Ops</h1>
       <form onSubmit={submit}>
         <p>

@@ -38,6 +38,11 @@ export function ErrorBanner({ text, onReload }: { text: string | null; onReload?
   );
 }
 
+/** Status or priority pill; the colour comes from the `badge-<VALUE>` class in globals.css. */
+export function Badge({ value }: { value: string }) {
+  return <span className={`badge badge-${value}`}>{value.replaceAll("_", " ")}</span>;
+}
+
 export function ItemTable({ items }: { items: Item[] }) {
   if (items.length === 0) return <p className="muted">Nothing here.</p>;
   return (
@@ -61,8 +66,12 @@ export function ItemTable({ items }: { items: Item[] }) {
             </td>
             <td>{item.team.name}</td>
             <td>{item.type}</td>
-            <td className={item.priority === "URGENT" ? "urgent" : undefined}>{item.priority}</td>
-            <td>{item.status}</td>
+            <td>
+              <Badge value={item.priority} />
+            </td>
+            <td>
+              <Badge value={item.status} />
+            </td>
             <td>{item.assignee?.name ?? <span className="muted">unassigned</span>}</td>
             <td>{new Date(item.createdAt).toLocaleDateString()}</td>
           </tr>
